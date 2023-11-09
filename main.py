@@ -2,7 +2,7 @@ import sys
 import requests
 from bs4 import BeautifulSoup
 from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QPushButton, QTextEdit, QLineEdit, \
-    QListWidget, QWidget, QLabel, QMessageBox
+    QListWidget, QWidget, QLabel, QMessageBox, QComboBox
 
 
 def extract_product_info_from_link(url):
@@ -49,9 +49,14 @@ class ShoppingCartApp(QMainWindow):
         self.link_entry = QLineEdit(self)
         self.add_link_button = QPushButton('Add by Link', self)
 
+        self.search_source = QComboBox(self)
+        self.search_source.addItem('Amazon')
+        self.search_source.addItem('Flipkart')
+
         search_layout = QHBoxLayout()
         search_layout.addWidget(self.search_entry)
         search_layout.addWidget(self.search_button)
+        search_layout.addWidget(self.search_source)
 
         link_layout = QHBoxLayout()
         link_layout.addWidget(self.link_entry)
@@ -107,9 +112,40 @@ class ShoppingCartApp(QMainWindow):
 
         return products
 
+    def search_flipkart_product(self, product_name):
+        base_url = f'https://www.flipkart.com/search?q={product_name.replace(" ", "+")}'
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                          'Chrome/95.0.4638.69 Safari/537.36'}
+        response = requests.get(base_url, headers=headers)
+
+        if response.status_code != 200:
+            print("Error: Unable to access Flipkart. Please try again later.")
+            return []
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+        products = []
+
+        for result in soup.find_all("div", {"class": "_2kHMtA"}):
+            title = result.find("a", {"class": "_4rR01T"}).text.strip()
+            price = result.find("div", {"class": "_30jeq3 _1_WHN1"})
+            if price:
+                price = price.text.strip()
+            else:
+                price = "Not available"
+
+            products.append([title, price])
+
+        return products
+
     def add_product_by_link(self):
         product_link = self.link_entry.text()
-        product_name, product_price = extract_product_info_from_link(product_link)
+        source = self.search_source.currentText()
+        if source == 'Amazon':
+            product_name, product_price = extract_product_info_from_link(product_link, 'amazon')
+        elif source == 'Flipkart':
+            product_name, product_price = extract_product_info_from_link(product_link, 'flipkart')
         if product_name and product_price:
             self.cart.append(f"{product_name} - {product_price}")
             self.update_cart_text()
@@ -119,7 +155,7 @@ class ShoppingCartApp(QMainWindow):
     def update_cart_text(self):
         cart_text = "Shopping Cart:\n"
         for idx, item in enumerate(self.cart, start=1):
-            cart_text += f"{idx}. {item[2::]}\n"
+            cart_text += f"{idx}. {item}\n"
         self.cart_text.setPlainText(cart_text)
 
     def show_error_message(self, title, message):
@@ -131,7 +167,17 @@ class ShoppingCartApp(QMainWindow):
 
     def search_product(self):
         product_name = self.search_entry.text()
-        product_list = self.search_amazon_product(product_name)[:5]
+        source = self.search_source.currentText()
+
+        if source == 'Amazon':
+            product_list = self.search_amazon_product(product_name)[:5]
+        elif source == 'Flipkart':
+            # Show a popup saying "In Development"
+            self.show_in_development_popup()
+            return
+        else:
+            self.show_error_message("Unsupported Source", "Selected source is not supported yet.")
+            return
 
         if not product_list:
             self.show_error_message("No Results", "No results found.")
@@ -140,6 +186,14 @@ class ShoppingCartApp(QMainWindow):
             for idx, (product_name, price) in enumerate(product_list, start=1):
                 item_text = f"{idx}. {product_name} - {price}\n"
                 self.product_list.addItem(item_text)
+
+    def show_in_development_popup(self):
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Information)
+        msg.setWindowTitle("In Development")
+        msg.setText("Searching on Flipkart is currently in development.\nStay tuned for future updates!")
+        msg.exec_()
+
 
 
 def main():
